@@ -5,9 +5,7 @@ from tqdm import tqdm
 from solver import WaveSolver2D
 import config
 
-# ==========================================
 # KHO BẢN ĐỒ (Map Gallery)
-# ==========================================
 MAP_APARTMENT = """
 ########################
 #      =       =       #
@@ -22,8 +20,6 @@ MAP_APARTMENT = """
 """
 
 # MẪU 2: NHÀ ỐNG ĐẶC TRƯNG VIỆT NAM
-# Dài, hẹp, bị chia cắt liên tục bởi các lớp tường gạch từ ngoài vào trong. Cửa cuốn sắt (#) ở mặt tiền.
-# Ý nghĩa: Chứng minh việc đặt cục Wi-Fi ở tầng 1 (hoặc phòng khách đầu nhà) sẽ khiến phòng ngủ cuối nhà hoàn toàn mất mạng do suy hao liên tiếp.
 MAP_TUBE_HOUSE = """
 ########################
 #      =       =       #
@@ -38,8 +34,6 @@ MAP_TUBE_HOUSE = """
 """
 
 # MẪU 3: VĂN PHÒNG LÀM VIỆC HIỆN ĐẠI
-# Phòng Giám đốc xây tường gạch kín đáo góc trái. Giữa phòng là không gian họp vách kính 100%. Mặt tiền là kính cường lực toàn cảnh.
-# Ý nghĩa: Khoe hiện tượng KHÚC XẠ siêu đẹp. Sóng đi qua phòng họp kính rất mượt và sáng, nhưng đập vào phòng sếp thì bị gọt đi năng lượng ngay lập tức.
 MAP_OFFICE = """
 ########################
 #      =               -
@@ -54,8 +48,6 @@ MAP_OFFICE = """
 """
 
 # MẪU 4: TÒA NHÀ CÓ LÕI THANG MÁY
-# Một mặt bằng rộng nhưng ngay chính giữa là một khối bê tông khổng lồ (Lõi thang máy/Trục kỹ thuật).
-# Ý nghĩa: Đây là "Bóng ma Wi-Fi" trong đời thực. Lõi thang máy (#) hấp thụ 100% sóng, tạo ra một vùng mù (Deadzone) đen sì phía sau nó, đòi hỏi phải lắp 2 cục Router ở 2 bên mới phủ hết được.
 MAP_ELEVATOR_CORE = """
 ########################
 -      =       =       -
@@ -109,23 +101,25 @@ def build_room_from_ascii(solver, ascii_map):
                 
 def run_optimization(map_choice):
     """Tính toán dữ liệu cho 1 bản đồ cụ thể"""
-    
-    # [ĐÃ SỬA Ở ĐÂY]: Xóa config.C ở cuối, vì Vận tốc sóng giờ đã tự động 
-    # thay đổi theo bản đồ vật liệu (c_map) bên trong class WaveSolver2D.
     solver = WaveSolver2D(config.NX, config.NY, config.DX, config.DY, config.DT)
     
     map_dict = {1: MAP_APARTMENT, 2: MAP_TUBE_HOUSE, 3: MAP_OFFICE, 4: MAP_ELEVATOR_CORE}
     selected_map = map_dict.get(map_choice, MAP_APARTMENT)
     
-    # Hàm này giờ đây sẽ tự động gán cả Damping và Vận tốc khúc xạ C cho từng loại tường
     build_room_from_ascii(solver, selected_map)
 
-    # Đề xuất các vị trí test 
-    candidate_positions = [(20, 20), (60, 50)]
+    # GRID SEARCH 
+    candidate_positions = []
+    for y in range(config.ROUTER_SEARCH_STEP, config.NY, config.ROUTER_SEARCH_STEP):
+        for x in range(config.ROUTER_SEARCH_STEP, config.NX, config.ROUTER_SEARCH_STEP):
+            if solver.damping_map[y, x] == 1.0: # Chỉ đặt ở không khí
+                candidate_positions.append((x, y))
+
     best_pos, best_score = None, -1
     best_coverage_map, best_max_amp = None, None
 
-    for pos in candidate_positions:
+    # Bọc tqdm vào đây để hiển thị thanh tiến trình % trên Terminal
+    for pos in tqdm(candidate_positions, desc=f"Computing Map {map_choice}", leave=False):
         max_amp, coverage_mask, score = solver.calculate_coverage(
             router_pos=pos, steps=config.SIM_STEPS, frequency=config.FREQUENCY, threshold=config.E_THRESHOLD
         )
@@ -157,10 +151,8 @@ def visualize_interactive_dashboard(all_results):
     """Hiển thị giao diện và nhận tín hiệu bàn phím (Đã nâng cấp màu vật liệu)"""
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
-    # --- KHỞI TẠO BẢN ĐỒ SỐ 1 ---
+    # Map init
     init_pos, init_amp, init_cov, init_damp = all_results[1]
-    
-    # Dùng hàm mới để lấy màu vật liệu thay vì np.where
     init_walls_rgba = get_material_rgba(init_damp)
 
     # Trục 1: Heatmap
@@ -179,7 +171,7 @@ def visualize_interactive_dashboard(all_results):
 
     title_text = fig.suptitle("Displaying Map 1 (Press keys 1, 2, 3, 4 to switch maps)", fontsize=14, fontweight='bold')
 
-    # --- HÀM XỬ LÝ SỰ KIỆN BÀN PHÍM ---
+    # change map on key press
     def on_key(event):
         if event.key not in ['1', '2', '3', '4']:
             return
@@ -187,7 +179,6 @@ def visualize_interactive_dashboard(all_results):
         map_id = int(event.key)
         best_pos, max_amp, coverage_map, damping_map = all_results[map_id]
         
-        # Cập nhật màu vật liệu cho khung hình mới
         walls_rgba = get_material_rgba(damping_map)
 
         im1.set_data(max_amp)
@@ -207,7 +198,7 @@ def visualize_interactive_dashboard(all_results):
 
 if __name__ == "__main__":
     print("2D WAVE EQUATION SIMULATION - OPTIMIZING WI-FI PLACEMENT")
-    print("System is pre-computing 4 maps. This process will take about 10-15 seconds, please wait...\n")
+    print("System is pre-computing 4 maps, please wait...\n")
     
     # 1. TÍNH TOÁN TRƯỚC (Pre-compute)
     all_results = {}

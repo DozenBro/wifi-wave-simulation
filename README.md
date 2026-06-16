@@ -9,7 +9,7 @@ Mở Terminal trong VS Code và chạy lệnh:
 git clone <đường-link-github-của-repo-này>
 cd <tên-thư-mục-chứa-repo>
 
-#Tạo môi trường ảo (có thể skip  qua cài thư viện luôn)
+# Tạo môi trường ảo (có thể skip qua cài thư viện luôn)
 # Dành cho Windows
 python -m venv venv
 
@@ -25,7 +25,7 @@ venv\Scripts\activate.bat
 # Dành cho macOS/Linux
 source venv/bin/activate
 
-#Cài thư viện
+# Cài thư viện
 pip install -r requirements.txt
 
 #Chạy chương trình
