@@ -1,7 +1,7 @@
 import numpy as np
 
 class WaveSolver2D:
-    def __init__(self, nx, ny, dx, dy, dt): # Đã xóa biến 'c' ở đây
+    def __init__(self, nx, ny, dx, dy, dt): 
         self.nx = nx
         self.ny = ny
         self.dt = dt
@@ -12,9 +12,8 @@ class WaveSolver2D:
         self.u_curr = np.zeros((ny, nx))
         self.u_next = np.zeros((ny, nx))
         
-        # BẢN ĐỒ VẬT LÝ: Mặc định toàn bộ phòng là KHÔNG KHÍ
-        self.damping_map = np.ones((ny, nx))  # Hệ số suy hao (1.0 = Không suy hao)
-        self.c_map = np.ones((ny, nx))        # Vận tốc sóng (1.0 = Nhanh nhất)
+        self.damping_map = np.ones((ny, nx))  # Hệ số suy hao 
+        self.c_map = np.ones((ny, nx))        # Vận tốc sóng 
         
         self.time_step = 0
 

@@ -5,7 +5,6 @@ from tqdm import tqdm
 from solver import WaveSolver2D
 import config
 
-# KHO BẢN ĐỒ (Map Gallery)
 MAP_APARTMENT = """
 ########################
 #      =       =       #
@@ -37,11 +36,11 @@ MAP_TUBE_HOUSE = """
 MAP_OFFICE = """
 ########################
 #      =               -
-#                      -
+#      =   ---------   -
 #      =   -       -   #
 #      =   -       -   #
-#==   ==   -       -   #
-#                      #
+#===  ==   -       -   #
+#          ---------   #
 #                      #
 #                      #
 ########################
@@ -50,24 +49,22 @@ MAP_OFFICE = """
 # MẪU 4: TÒA NHÀ CÓ LÕI THANG MÁY
 MAP_ELEVATOR_CORE = """
 ########################
--      =       =       -
--                      -
--      =       =       -
-#=======       ========#
-#                      #
-#                      #
-#      =       =       #
-#      =       =       #
+-     =          =     -
+-     =          =     -
+-  ====  ######  =     -
+#        ######        #
+#        ######        #
+#  ====  ######        #
+-     =                -
+-     =                -
 ########################
 """
 
-# TỪ ĐIỂN VẬT LIỆU (Material Dictionary)
-# Cấu trúc: 'Ký tự' : (Hệ số Damping, Vận tốc truyền sóng C)
 MATERIALS = {
-    ' ': (1.0, 1.0),   # Không khí: Sóng đi nhanh nhất (C=1.0), không bị cản
-    '#': (0.0, 0.0),   # Bê tông/Kim loại: Hấp thụ toàn bộ sóng (Tạo bóng ma Wi-Fi)
-    '=': (0.85, 0.6),  # Tường gạch: Làm yếu sóng và làm CHẬM sóng (Gây ra khúc xạ)
-    '-': (0.95, 0.8)   # Cửa kính/Gỗ: Xuyên thấu tốt hơn tường, sóng truyền nhanh hơn tường gạch
+    ' ': (1.0, 1.0),   # Không khí
+    '#': (0.0, 0.0),   # Bê tông/Kim loại
+    '=': (0.85, 0.6),  # Tường gạch
+    '-': (0.95, 0.8)   # Cửa kính/Gỗ
 }
 
 def build_room_from_ascii(solver, ascii_map):
@@ -79,14 +76,13 @@ def build_room_from_ascii(solver, ascii_map):
     block_h = solver.ny // grid_y
     block_w = solver.nx // grid_x
     
-    # Bước 1: Reset toàn bộ phòng thành không khí (Air)
+    # Create map
     solver.damping_map.fill(MATERIALS[' '][0])
     solver.c_map.fill(MATERIALS[' '][1])
-    
-    # Bước 2: Đắp vật liệu theo bản đồ
+
     for i, row in enumerate(lines):
         for j, char in enumerate(row):
-            if char == ' ': # Bỏ qua khoảng trắng để tối ưu tốc độ
+            if char == ' ': 
                 continue
                 
             y_start = i * block_h
@@ -114,35 +110,39 @@ def run_optimization(map_choice):
         for x in range(config.ROUTER_SEARCH_STEP, config.NX, config.ROUTER_SEARCH_STEP):
             if solver.damping_map[y, x] == 1.0: # Chỉ đặt ở không khí
                 candidate_positions.append((x, y))
-
+    # không gian đứng được TRƯỚC khi chạy vòng lặp
+    walkable_mask = (solver.damping_map >= 0.95)
+    
     best_pos, best_score = None, -1
     best_coverage_map, best_max_amp = None, None
-
-    # Bọc tqdm vào đây để hiển thị thanh tiến trình % trên Terminal
     for pos in tqdm(candidate_positions, desc=f"Computing Map {map_choice}", leave=False):
-        max_amp, coverage_mask, score = solver.calculate_coverage(
+        
+        # Dùng dấu '_' để vứt bỏ cái điểm số thô (chứa cả tường) của solver.py
+        max_amp, coverage_mask, _ = solver.calculate_coverage(
             router_pos=pos, steps=config.SIM_STEPS, frequency=config.FREQUENCY, threshold=config.E_THRESHOLD
         )
-        if score > best_score:
-            best_score, best_pos = score, pos
-            best_coverage_map, best_max_amp = coverage_mask, max_amp
+        
+        # (Lọc bỏ tường)
+        valid_coverage_mask = np.logical_and(coverage_mask, walkable_mask)
+        real_score = np.sum(valid_coverage_mask)
 
+        # Grid Search 
+        if real_score > best_score:
+            best_score, best_pos = real_score, pos
+            best_coverage_map, best_max_amp = coverage_mask, max_amp
     return best_pos, best_max_amp, best_coverage_map, solver.damping_map
 
 def get_material_rgba(damping_map):
     """Chuyển đổi ma trận suy hao thành ma trận màu RGBA để phân biệt vật liệu"""
     rgba = np.zeros((damping_map.shape[0], damping_map.shape[1], 4))
     
-    # 1. Bê tông/Kim loại (Damping = 0.0): Màu Xám đậm (Cản 100% sóng)
+    # Materials configuration:
     rgba[damping_map == 0.0] = [0.2, 0.2, 0.2, 1.0] 
     
-    # 2. Tường gạch (Damping = 0.85): Màu Cam đất/Nâu gạch
     rgba[damping_map == 0.85] = [0.8, 0.4, 0.2, 1.0] 
     
-    # 3. Cửa kính/Gỗ (Damping = 0.95): Màu Xanh lơ trong suốt
     rgba[damping_map == 0.95] = [0.0, 0.8, 0.9, 0.7] 
     
-    # 4. Không khí (Damping = 1.0): Hoàn toàn trong suốt (Alpha = 0)
     rgba[damping_map == 1.0] = [0.0, 0.0, 0.0, 0.0] 
     
     return rgba
@@ -157,7 +157,7 @@ def visualize_interactive_dashboard(all_results):
 
     # Trục 1: Heatmap
     im1 = axes[0].imshow(init_amp, cmap='hot', origin='lower', vmin=0, vmax=1.0)
-    im1_walls = axes[0].imshow(init_walls_rgba, origin='lower') # Bỏ alpha=0.5 vì RGBA đã tự xử lý
+    im1_walls = axes[0].imshow(init_walls_rgba, origin='lower') 
     point1, = axes[0].plot(init_pos[0], init_pos[1], 'go', markersize=10, label='Router (Optimal)')
     axes[0].set_title("Maximum Wi-Fi Intensity Heatmap")
     axes[0].legend(loc="upper right")
@@ -198,15 +198,34 @@ def visualize_interactive_dashboard(all_results):
 
 if __name__ == "__main__":
     print("2D WAVE EQUATION SIMULATION - OPTIMIZING WI-FI PLACEMENT")
-    print("System is pre-computing 4 maps, please wait...\n")
+    print("System is pre-computing 4 maps. This process will take about 10-15 seconds, please wait...\n")
     
-    # 1. TÍNH TOÁN TRƯỚC (Pre-compute)
+    # 1. TÍNH TOÁN TRƯỚC (Pre-compute) VÀ IN KẾT QUẢ RA TERMINAL
     all_results = {}
     for i in range(1, 5):
-        print(f"Computing Map {i}...")
-        all_results[i] = run_optimization(i)
+        best_pos, best_max_amp, best_coverage_map, damping_map = run_optimization(i)
+        all_results[i] = (best_pos, best_max_amp, best_coverage_map, damping_map)
+        
+        # Đếm số pixel "có mạng"
+        walkable_mask = (damping_map >= 0.95)
+        walkable_pixels = np.sum(walkable_mask)
+        
+        # 2. Lọc vùng phủ sóng HỢP LỆ (Vừa có mạng VÀ Vừa đứng được)
+        valid_coverage_mask = np.logical_and(best_coverage_map, walkable_mask)
+        coverage_score = np.sum(valid_coverage_mask)
+        
+        # 3. Tính tỷ lệ % chuẩn xác tuyệt đối
+        coverage_percent = (coverage_score / walkable_pixels) * 100
+        
+        # Biên độ cường độ đỉnh
+        peak_amp = np.max(best_max_amp)
+        
+        print(f"\n=> KẾT QUẢ BẢN ĐỒ {i}:")
+        print(f"   - Tọa độ Router tối ưu (x, y) : {best_pos}")
+        print(f"   - Cường độ sóng đỉnh (Peak)   : {peak_amp:.4f}")
+        print(f"   - Diện tích phủ sóng (%)      : {coverage_percent:.2f}%")
+        print("-" * 50)
     
     print("\n=> Computation complete! Opening Dashboard interface...")
     
-    # 2. HIỂN THỊ GIAO DIỆN CHUYỂN TAB
     visualize_interactive_dashboard(all_results)

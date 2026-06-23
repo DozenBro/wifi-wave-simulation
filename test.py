@@ -1,4 +1,3 @@
-# CHẠY ĐOẠN CODE NÀY ĐỂ LẤY ẢNH DÁN VÀO SLIDE 2
 import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots(figsize=(6, 6))
